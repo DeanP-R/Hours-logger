@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Work Summary</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 2%;
+        }
+        .container {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1%;
+        }
+        .summary-container {
+            background-color: #fff;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            padding: 1%;
+            width: 45%;
+            box-sizing: border-box;
+            height: 80%; /* Reduce the height */
+        }
+        .summary-header {
+            font-size: 1.1em;
+            margin-bottom: 0.8em;
+            color: #333;
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 0.4em;
+        }
+        .summary-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0.5em 0;
+        }
+        .summary-list li {
+            background: #f1f1f1;
+            margin: 0.4em 0;
+            padding: 0.4em;
+            border-radius: 5px;
+        }
+        .chart-container {
+            width: 100%;
+        }
+        button, input[type="text"] {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            padding: 0.4em 0.8em;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        button:hover, input[type="text"]:hover {
+            background-color: #0056b3;
+        }
+        input[type="text"] {
+            width: calc(100% - 90px);
+            margin-right: 0.4em;
+        }
+        .input-container {
+            display: flex;
+            align-items: center;
+            margin: 1.5% 0;
+            gap: 0.4em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="summary-container" id="daily-summary">
+            <div class="summary-header">Today's Work Summary</div>
+            <div>Total Hours Worked: <span id="total-hours-day">0</span></div>
+            <ul class="summary-list" id="topic-list-day"></ul>
+            <div class="chart-container">
+                <canvas id="daily-chart"></canvas>
+            </div>
+            <button onclick="endDay()">End Day</button>
+        </div>
+
+        <div class="summary-container" id="weekly-summary">
+            <div class="summary-header">Weekly Work Summary</div>
+            <div>Total Hours Worked: <span id="total-hours-week">0</span></div>
+            <div>Hours Remaining: <span id="hours-remaining">37.50</span></div>
+            <ul class="summary-list" id="topic-list-week"></ul>
+            <div class="chart-container">
+                <canvas id="weekly-chart"></canvas>
+            </div>
+            <button onclick="endWeek()">End Week</button>
+        </div>
+    </div>
+
+    <div class="input-container">
+        <input type="text" id="topic" onkeypress="checkEnter(event)" placeholder="Enter topic...">
+        <button onclick="addQuarterHour()">+0.50 Hour</button>
+    </div>
+
+    <script>
+        let totalHoursDay = 0;
+        let totalHoursWeek = 0;
+        const maxHoursPerWeek = 37.5;
+        const dailyTopics = {};
+        const weeklyTopics = {};
+        const colors = {};
+
+        const dailyChartCtx = document.getElementById('daily-chart').getContext('2d');
+        const weeklyChartCtx = document.getElementById('weekly-chart').getContext('2d');
+        let dailyChart = new Chart(dailyChartCtx, {
+            type: 'pie',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: []
+                }]
+            }
+        });
+        let weeklyChart = new Chart(weeklyChartCtx, {
+            type: 'pie',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: []
+                }]
+            }
+        });
+
+        function addQuarterHour() {
+            const topicInput = document.getElementById('topic');
+            const topic = topicInput.value.trim();
+
+            if (topic === "") {
+                alert("Please enter a topic.");
+                return;
+            }
+
+            totalHoursDay += 0.50;
+            totalHoursWeek += 0.50;
+            
+            if (dailyTopics[topic]) {
+                dailyTopics[topic] += 0.50;
+            } else {
+                dailyTopics[topic] = 0.50;
+                colors[topic] = getRandomColor();
+            }
+
+            if (weeklyTopics[topic]) {
+                weeklyTopics[topic] += 0.50;
+            } else {
+                weeklyTopics[topic] = 0.50;
+            }
+
+            updateSummaries();
+            topicInput.value = '';
+        }
+
+        function updateSummaries() {
+            document.getElementById('total-hours-day').innerText = totalHoursDay.toFixed(2);
+            document.getElementById('total-hours-week').innerText = totalHoursWeek.toFixed(2);
+            document.getElementById('hours-remaining').innerText = (maxHoursPerWeek - totalHoursWeek).toFixed(2);
+
+            const topicListDay = document.getElementById('topic-list-day');
+            const topicListWeek = document.getElementById('topic-list-week');
+
+            topicListDay.innerHTML = "";
+            topicListWeek.innerHTML = "";
+
+            for (const topic in dailyTopics) {
+                const li = document.createElement('li');
+                li.innerText = `${topic}: ${dailyTopics[topic].toFixed(2)} hour(s)`;
+                topicListDay.appendChild(li);
+            }
+
+            for (const topic in weeklyTopics) {
+                const li = document.createElement('li');
+                li.innerText = `${topic}: ${weeklyTopics[topic].toFixed(2)} hour(s)`;
+                topicListWeek.appendChild(li);
+            }
+
+            updateCharts();
+        }
+
+        function updateCharts() {
+            dailyChart.data.labels = Object.keys(dailyTopics);
+            dailyChart.data.datasets[0].data = Object.values(dailyTopics);
+            dailyChart.data.datasets[0].backgroundColor = Object.keys(dailyTopics).map(topic => colors[topic]);
+            dailyChart.update();
+
+            weeklyChart.data.labels = Object.keys(weeklyTopics);
+            weeklyChart.data.datasets[0].data = Object.values(weeklyTopics);
+            weeklyChart.data.datasets[0].backgroundColor = Object.keys(weeklyTopics).map(topic => colors[topic]);
+            weeklyChart.update();
+        }
+
+        function getRandomColor() {
+            const letters = '0123456789ABCDEF';
+            let color = '#';
+            for (let i = 0; i < 6; i++) {
+                color += letters[Math.floor(Math.random() * 16)];
+            }
+            return color;
+        }
+
+        function endDay() {
+            saveSummary('daily-summary', 'day-summary.png');
+            console.log("Day ended:", { totalHoursDay, dailyTopics });
+            totalHoursDay = 0;
+            for (let topic in dailyTopics) {
+                dailyTopics[topic] = 0;
+            }
+            updateSummaries();
+        }
+
+        function endWeek() {
+            saveSummary('weekly-summary', 'week-summary.png');
+            console.log("Week ended:", { totalHoursWeek, weeklyTopics });
+            totalHoursWeek = 0;
+            for (let topic in weeklyTopics) {
+                weeklyTopics[topic] = 0;
+            }
+            updateSummaries();
+        }
+
+        function saveSummary(elementId, filename) {
+            const element = document.getElementById(elementId);
+            html2canvas(element).then(canvas => {
+                const link = document.createElement('a');
+                link.download = filename;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+
+        function checkEnter(event) {
+            if (event.key === 'Enter') {
+                addQuarterHour();
+            }
+        }
+    </script>
+</body>
+</html>
