@@ -9,9 +9,11 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
+            background-color: var(--background-color);
+            color: var(--text-color);
             margin: 0;
             padding: 2%;
+            transition: background-color 0.3s, color 0.3s;
         }
         .container {
             display: flex;
@@ -20,18 +22,19 @@
             gap: 1%;
         }
         .summary-container {
-            background-color: #fff;
+            background-color: var(--container-bg-color);
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             border-radius: 10px;
             padding: 1%;
             width: 45%;
             box-sizing: border-box;
-            height: 80%; /* Reduce the height */
+            height: 80%;
+            transition: background-color 0.3s;
         }
         .summary-header {
             font-size: 1.1em;
             margin-bottom: 0.8em;
-            color: #333;
+            color: var(--header-color);
             border-bottom: 2px solid #007BFF;
             padding-bottom: 0.4em;
         }
@@ -41,15 +44,16 @@
             margin: 0.5em 0;
         }
         .summary-list li {
-            background: #f1f1f1;
+            background: var(--list-bg-color);
             margin: 0.4em 0;
             padding: 0.4em;
             border-radius: 5px;
+            transition: background-color 0.3s;
         }
         .chart-container {
             width: 100%;
         }
-        button, input[type="text"] {
+        button, input[type="text"], input[type="time"] {
             background-color: #007BFF;
             color: white;
             border: none;
@@ -57,11 +61,12 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 0.9em;
+            transition: background-color 0.3s;
         }
-        button:hover, input[type="text"]:hover {
+        button:hover, input[type="text"]:hover, input[type="time"]:hover {
             background-color: #0056b3;
         }
-        input[type="text"] {
+        input[type="text"], input[type="time"] {
             width: calc(100% - 90px);
             margin-right: 0.4em;
         }
@@ -71,13 +76,55 @@
             margin: 1.5% 0;
             gap: 0.4em;
         }
+        .mode-toggle {
+            background-color: var(--toggle-bg-color);
+            color: var(--toggle-text-color);
+            border: none;
+            padding: 0.4em 0.8em;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.3s, color 0.3s;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        .mode-toggle:hover {
+            background-color: var(--toggle-hover-bg-color);
+        }
+
+        /* Light Mode Variables */
+        :root {
+            --background-color: #f5f5f5;
+            --text-color: #000;
+            --container-bg-color: #fff;
+            --header-color: #333;
+            --list-bg-color: #f1f1f1;
+            --toggle-bg-color: #333;
+            --toggle-text-color: #fff;
+            --toggle-hover-bg-color: #555;
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --background-color: #333;
+            --text-color: #fff;
+            --container-bg-color: #444;
+            --header-color: #ddd;
+            --list-bg-color: #555;
+            --toggle-bg-color: #ddd;
+            --toggle-text-color: #333;
+            --toggle-hover-bg-color: #fff;
+        }
     </style>
 </head>
 <body>
+    <button class="mode-toggle" onclick="toggleMode()">Toggle Mode</button>
     <div class="container">
         <div class="summary-container" id="daily-summary">
             <div class="summary-header">Today's Work Summary</div>
             <div>Total Hours Worked: <span id="total-hours-day">0</span></div>
+            <div>Start Time: <input type="time" id="start-time" onchange="setStartTime()"></div>
             <ul class="summary-list" id="topic-list-day"></ul>
             <div class="chart-container">
                 <canvas id="daily-chart"></canvas>
@@ -99,16 +146,23 @@
 
     <div class="input-container">
         <input type="text" id="topic" onkeypress="checkEnter(event)" placeholder="Enter topic...">
-        <button onclick="addQuarterHour()">+0.50 Hour</button>
+        <button onclick="logWork(0.50)">+0.50 Hour</button>
+        <button onclick="logWork(1)">+1 Hour</button>
+        <button onclick="logWork(2)">+2 Hours</button>
+        <button onclick="logBreak(0.5)">30 Min Break</button>
+        <button onclick="logBreak(1)">1 Hour Break</button>
+        <button onclick="clearAll()">Clear All</button>
     </div>
 
     <script>
         let totalHoursDay = 0;
         let totalHoursWeek = 0;
+        let startTime = null;
+        let currentEndTime = null;
         const maxHoursPerWeek = 37.5;
-        const dailyTopics = {};
-        const weeklyTopics = {};
-        const colors = {};
+        const dailyTopics = JSON.parse(localStorage.getItem('dailyTopics')) || {};
+        const weeklyTopics = JSON.parse(localStorage.getItem('weeklyTopics')) || {};
+        const colors = JSON.parse(localStorage.getItem('colors')) || {};
 
         const dailyChartCtx = document.getElementById('daily-chart').getContext('2d');
         const weeklyChartCtx = document.getElementById('weekly-chart').getContext('2d');
@@ -133,7 +187,21 @@
             }
         });
 
-        function addQuarterHour() {
+        function setStartTime() {
+            const startTimeInput = document.getElementById('start-time');
+            startTime = new Date();
+            const timeParts = startTimeInput.value.split(':');
+            startTime.setHours(timeParts[0], timeParts[1], 0, 0);
+            currentEndTime = new Date(startTime);
+            saveProgress();
+        }
+
+        function logWork(hours) {
+            if (!startTime) {
+                alert("Please set the start time first.");
+                return;
+            }
+
             const topicInput = document.getElementById('topic');
             const topic = topicInput.value.trim();
 
@@ -142,24 +210,41 @@
                 return;
             }
 
-            totalHoursDay += 0.50;
-            totalHoursWeek += 0.50;
-            
+            totalHoursDay += hours;
+            totalHoursWeek += hours;
+
             if (dailyTopics[topic]) {
-                dailyTopics[topic] += 0.50;
+                dailyTopics[topic].hours += hours;
             } else {
-                dailyTopics[topic] = 0.50;
+                dailyTopics[topic] = { hours: hours, intervals: [] };
                 colors[topic] = getRandomColor();
             }
 
+            const startTimeString = formatTime(currentEndTime);
+            currentEndTime.setMinutes(currentEndTime.getMinutes() + hours * 60);
+            const endTimeString = formatTime(currentEndTime);
+
+            dailyTopics[topic].intervals.push(`${startTimeString} - ${endTimeString}`);
+
             if (weeklyTopics[topic]) {
-                weeklyTopics[topic] += 0.50;
+                weeklyTopics[topic] += hours;
             } else {
-                weeklyTopics[topic] = 0.50;
+                weeklyTopics[topic] = hours;
             }
 
             updateSummaries();
             topicInput.value = '';
+            saveProgress();
+        }
+
+        function logBreak(hours) {
+            if (!startTime) {
+                alert("Please set the start time first.");
+                return;
+            }
+
+            currentEndTime.setMinutes(currentEndTime.getMinutes() + hours * 60);
+            saveProgress();
         }
 
         function updateSummaries() {
@@ -175,7 +260,7 @@
 
             for (const topic in dailyTopics) {
                 const li = document.createElement('li');
-                li.innerText = `${topic}: ${dailyTopics[topic].toFixed(2)} hour(s)`;
+                li.innerText = `${topic}: ${dailyTopics[topic].hours.toFixed(2)} hour(s) (${dailyTopics[topic].intervals.join(', ')})`;
                 topicListDay.appendChild(li);
             }
 
@@ -190,7 +275,7 @@
 
         function updateCharts() {
             dailyChart.data.labels = Object.keys(dailyTopics);
-            dailyChart.data.datasets[0].data = Object.values(dailyTopics);
+            dailyChart.data.datasets[0].data = Object.values(dailyTopics).map(topic => topic.hours);
             dailyChart.data.datasets[0].backgroundColor = Object.keys(dailyTopics).map(topic => colors[topic]);
             dailyChart.update();
 
@@ -214,9 +299,11 @@
             console.log("Day ended:", { totalHoursDay, dailyTopics });
             totalHoursDay = 0;
             for (let topic in dailyTopics) {
-                dailyTopics[topic] = 0;
+                dailyTopics[topic].hours = 0;
+                dailyTopics[topic].intervals = [];
             }
             updateSummaries();
+            saveProgress();
         }
 
         function endWeek() {
@@ -227,6 +314,44 @@
                 weeklyTopics[topic] = 0;
             }
             updateSummaries();
+            saveProgress();
+        }
+
+        function clearAll() {
+            totalHoursDay = 0;
+            totalHoursWeek = 0;
+            startTime = null;
+            currentEndTime = null;
+            for (let topic in dailyTopics) {
+                delete dailyTopics[topic];
+            }
+            for (let topic in weeklyTopics) {
+                delete weeklyTopics[topic];
+            }
+            for (let color in colors) {
+                delete colors[color];
+            }
+            localStorage.clear();
+            updateSummaries();
+            dailyChart.data.labels = [];
+            dailyChart.data.datasets[0].data = [];
+            dailyChart.data.datasets[0].backgroundColor = [];
+            dailyChart.update();
+            weeklyChart.data.labels = [];
+            weeklyChart.data.datasets[0].data = [];
+            weeklyChart.data.datasets[0].backgroundColor = [];
+            weeklyChart.update();
+        }
+
+        function checkMonday() {
+            const now = new Date();
+            const dayOfWeek = now.getDay();
+            const lastReset = localStorage.getItem('lastReset');
+
+            if (dayOfWeek === 1 && lastReset !== now.toDateString()) {
+                endWeek();
+                localStorage.setItem('lastReset', now.toDateString());
+            }
         }
 
         function saveSummary(elementId, filename) {
@@ -241,9 +366,65 @@
 
         function checkEnter(event) {
             if (event.key === 'Enter') {
-                addQuarterHour();
+                logWork(0.50);
             }
         }
+
+        function saveProgress() {
+            localStorage.setItem('dailyTopics', JSON.stringify(dailyTopics));
+            localStorage.setItem('weeklyTopics', JSON.stringify(weeklyTopics));
+            localStorage.setItem('colors', JSON.stringify(colors));
+            localStorage.setItem('totalHoursDay', totalHoursDay);
+            localStorage.setItem('totalHoursWeek', totalHoursWeek);
+            localStorage.setItem('startTime', startTime ? startTime.toString() : '');
+            localStorage.setItem('currentEndTime', currentEndTime ? currentEndTime.toString() : '');
+        }
+
+        function loadProgress() {
+            const storedTotalHoursDay = localStorage.getItem('totalHoursDay');
+            const storedTotalHoursWeek = localStorage.getItem('totalHoursWeek');
+            if (storedTotalHoursDay !== null) totalHoursDay = parseFloat(storedTotalHoursDay);
+            if (storedTotalHoursWeek !== null) totalHoursWeek = parseFloat(storedTotalHoursWeek);
+            const storedStartTime = localStorage.getItem('startTime');
+            const storedCurrentEndTime = localStorage.getItem('currentEndTime');
+            if (storedStartTime) {
+                startTime = new Date(storedStartTime);
+            }
+            if (storedCurrentEndTime) {
+                currentEndTime = new Date(storedCurrentEndTime);
+            }
+            updateSummaries();
+            updateCharts(); // Ensure charts are updated after loading progress
+        }
+
+        function formatTime(date) {
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        function toggleMode() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function loadTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            if (storedTheme) {
+                document.documentElement.setAttribute('data-theme', storedTheme);
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        }
+
+        // Load progress and theme when the page loads
+        window.onload = function() {
+            loadTheme();
+            loadProgress();
+            checkMonday();
+        };
     </script>
 </body>
 </html>
